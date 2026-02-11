@@ -1,1 +1,106 @@
-// Placeholder for CipherScriptToolkit.cscproj
+/// CipherScript Toolkit Project Manifest
+/// Unified entrypoint for all security automation tools
+/// Author: Brian Lorick-inspired CipherScript Toolkit
+/// Version: 1.0
+
+// Set the minimum trust level for the entire project
+// Ensures all untrusted inputs must be sanitized before critical operations
+project trust-level = clean
+
+// Import all modules
+import "src/vulnerability/ssl_checker.csc"
+import "src/vulnerability/default_creds.csc"
+import "src/vulnerability/http_headers.csc"
+import "src/vulnerability/dir_bruteforce.csc"
+import "src/vulnerability/cve_scanner.csc"
+
+import "src/incident_response/file_integrity.csc"
+import "src/incident_response/log_anomalies.csc"
+import "src/incident_response/memory_collector.csc"
+import "src/incident_response/timeline_reconstructor.csc"
+import "src/incident_response/ioc_matcher.csc"
+
+import "src/auth_access/password_audit.csc"
+import "src/auth_access/session_validator.csc"
+import "src/auth_access/brute_force_detect.csc"
+import "src/auth_access/api_key_rotation.csc"
+import "src/auth_access/jwt_verifier.csc"
+
+import "src/crypto/file_crypto.csc"
+import "src/crypto/secret_generator.csc"
+import "src/crypto/hmac_pipeline.csc"
+import "src/crypto/argon2_password.csc"
+import "src/crypto/cert_fingerprint.csc"
+
+import "src/reporting/pentest_report.csc"
+import "src/reporting/owasp_checker.csc"
+import "src/reporting/audit_exporter.csc"
+import "src/reporting/evidence_bundler.csc"
+
+// Define a unified CLI entrypoint
+expose scope main(args: untrusted str[]) -> signal {
+
+    // Ensure at least one argument is provided
+    scan args.len == 0 {
+        emit("Usage: csc run CipherScriptToolkit.cscproj <tool> [options]")
+        return signal::fail
+    }
+
+    // First argument specifies the tool to run
+    probe tool: clean str = sanitize(args[0])
+
+    // Remaining arguments are passed to the specific tool
+    probe tool_args: str[] = args[1..]
+
+    // Dispatch to the selected tool
+    scan tool == "ssl_checker" {
+        emit("[INFO] Running SSL/TLS checker")
+        scan tool_args.len == 0 {
+            emit("[ERROR] Please provide hostnames to check")
+            return signal::fail
+        }
+        sweep host in tool_args {
+            scan check_cert(host) != signal::ok {
+                emit("[ERROR] SSL check failed for " + host)
+            } pivot {
+                emit("[INFO] SSL check passed for " + host)
+            }
+        }
+        return signal::ok
+    } pivot scan tool == "file_monitor" {
+        emit("[INFO] Running File Integrity Monitor")
+        scan tool_args.len < 2 {
+            emit("[ERROR] Usage: file_monitor <file_path> <known_hash>")
+            return signal::fail
+        }
+        probe path: clean str = tool_args[0]
+        sealed probe hash: sealed hex = tool_args[1]  // Assume provided hash is trusted
+        return monitor_file(path, hash)
+    } pivot scan tool == "password_audit" {
+        emit("[INFO] Running Password Strength Auditor")
+        scan tool_args.len == 0 {
+            emit("[ERROR] Please provide passwords to audit")
+            return signal::fail
+        }
+        sweep pwd in tool_args {
+            scan audit_password_strength(pwd) != signal::ok {
+                emit("[WARNING] Weak password detected: " + pwd)
+            } pivot {
+                emit("[INFO] Password strong: " + pwd)
+            }
+        }
+        return signal::ok
+    } pivot scan tool == "pentest_report" {
+        emit("[INFO] Generating Pentest Report")
+        scan tool_args.len < 2 {
+            emit("[ERROR] Usage: pentest_report <output_file> <scan_results...>")
+            return signal::fail
+        }
+        probe output: clean str = tool_args[0]
+        probe results: clean str[] = tool_args[1..]
+        return generate_pentest_report(results, output)
+    } pivot {
+        emit("[ERROR] Unknown tool: " + tool)
+        return signal::fail
+    }
+}
